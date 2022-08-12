@@ -4,6 +4,7 @@ using BeatSaberMarkupLanguage.MenuButtons;
 using System;
 using System.Net;
 using System.IO;
+using System.Threading;
 
 namespace RankedPlaylistGenerator
 {
@@ -13,6 +14,8 @@ namespace RankedPlaylistGenerator
         internal static Plugin Instance { get; private set; }
         internal static IPALogger Log { get; private set; }
 
+        MenuButton button;
+        Thread thread;
 
         [Init]
         public Plugin(IPALogger logger)
@@ -24,10 +27,9 @@ namespace RankedPlaylistGenerator
         [OnStart]
         public void OnApplicationStart()
         {
-            //Plugin.Log.Info("meow");
-            MenuButton testBtn = new MenuButton("Generate Ranked Playlists", "delicious pp", UpdateButtonPressed, true);
-            MenuButtons.instance.RegisterButton(testBtn);
-            
+            Plugin.Log.Info("meow");
+            button = new MenuButton("Generate Ranked Playlists", "delicious pp", UpdateButtonPressed, true);
+            MenuButtons.instance.RegisterButton(button);
         }
 
         [OnExit]
@@ -37,6 +39,15 @@ namespace RankedPlaylistGenerator
         }
 
         internal void UpdateButtonPressed()
+        {
+            if (thread == null || !thread.IsAlive)
+            {
+                thread = new Thread(GenerateRankedPlaylists);
+                thread.Start();
+            }
+        }
+
+        internal void GenerateRankedPlaylists()
         {
             string[] images =
             {
@@ -63,46 +74,56 @@ namespace RankedPlaylistGenerator
                 "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARZSURBVHhe7ZhvyF5jHMefxzBlWbzYECGUrUUtL7wSi5H83ewFxUwZra0QJVsZyhupLStqicJS/uxREy8IJUmElZktizVjtfmzP2lju31+1+97H/d1znXuc86zJyXXp779ruv3777v677v65zrjGQymUwmk8lkMplMJpPJZDKZ/xy9Xm8ZOlPT/x98+N3oOU07MSpbgYanYM6QvhsdHf3W/F2hz1SM9bBvaBfaTq892AmB/idhfrcxfWs/TytoNhM9hb5EZQ6jr9DNSh8KeTeiDSjFB2ihUo8K+qwKHZ1L5e4OxY95j1ZsUFkS4s94WiP3qGTc0OM3bxV4U+5uUDjF6ztxv8oj8C/2cGvuU2lnqJ3tLf5BoW5Ql1qATegLdCTMqhxQeQT+LR4u2I5WogXoAbQfDfKTSjtD7VpvEXGnwu2h6Hiv7X2N7pA7wPx09JoFE8xUWoD51e6OmKtwgPnt7o64TuFOUHfAyyM+VrgbFN6iYQVitqGluFUpAeYvubtgnUIR+Ld5uCCZNwxqrvTSJOcqbeKg6SHvHVHsuownuStiicIR+Mub5G6FAvKl+AvtQ7vQTnPUYHHbHP9AdX9huySPHBNesQGS7ad+nM8idsgap8kO8pFsmcE6Y4psQNfzzT6LmIQsdxpKvV4fi9v9xwkodW8wxktMt0GrBYCrZAd5mybbNDZSb2ivbJmzZPtMZpGP1ThA7xmYN3w2oTxI75s0bgdv7jP7zZSYr3CA+fXujgirXAb/fA9HnKxwBP5HPTwhXKu27aFouddGrFe4AN/dHoqwn2EF/KmrRe1hhphdQo+GvWiW2rWHoitCecxBVNll8d0bojEnKhyBf66HI05VOAnxGah89WjD+yjaY1pB0XnoZ+tQYqlSIvCnru91CzDPwxGpTbYCeXXnixTPq6yW5CZIoZ0EX0Hl//ByNpA1GpdJnfBsF05R/kb20fdPjZuIbr4auEC2PXx425E/tOUr8YRSkhC/xNMizlc4Av8KDxd8r9BQyLPTaleSv8I+qV+AbXDlY+XTfEMPa1zHL7KDzJYtc45sn7bPBxbIdmGxbDOs1qu+aBGVHb8Ocn/0koJVCkXg3+zhgqbFDZC3x9MrbEX2vCLFpyofDompk9VGhVtB/hovK7ATpT2xKWB+W4jEnK1wLZbjqRVWKz4VvRw8JUKDGsJtIjk3YMZsPMAR9AmyY+/+AXsY9TnEX6N4LkCfOZj3fFbwFnoW2V3j5ai8idod5TUa10LvRzArfRbYiRZS+65PHfLmYV73WcEi8l7QuApFj6PxUj4Sv+Pu1rR9xDbIWrlrIedFTw18LncaEh7yvHFRuSzhW++hRu5SyVDIm+bpvV/RhXI3Qu6cUAVypSF+GarbYJqou4df5+EktkAXKbURclejJzXtDLVjKHow0yc6KpLU9nTYp8d/q3Z16WdngYuRWTvt2enwB2q+wWYymUwmk8lkMplMJpPJZDKZf5uRkb8BimOa882SgPoAAAAASUVORK5CYII="
             };
 
-            WebClient client = new WebClient();
-            string res = client.DownloadString("https://scoresaber.com/api.php?function=get-leaderboards&cat=3&page=1&limit=9000");
+            float stars = -1.0f;
             int playlistStars = -1;
             string playlistContent = "";
-            for (int found = 1; found > 0;)
+            WebClient client = new WebClient();
+            for (int page = 1, resultsFound = 1; resultsFound > 0; page++)
             {
-                found = res.IndexOf("\"id\":", found);
-                string id = "";
-                string diff = "";
-                float stars = -1.0f;
-                if (found > 0)
+                button.Text = "Downloading page " + page;
+                string res = client.DownloadString("https://scoresaber.com/api/leaderboards?ranked=true&category=3&sort=0&page=" + page);
+                resultsFound = 0;
+                for (int found = 1; found > 0;)
                 {
-                    id = res.Substring(found + 7, 40);
-                    found = res.IndexOf("\"diff\":", found);
-                    string tmp = res.Substring(found + 10, 16);
-                    string[] tmpSplit = tmp.Split('_');
-                    diff = tmpSplit[0];
-                    found = res.IndexOf("\"stars\":", found);
-                    tmp = res.Substring(found + 9, 16);
-                    tmpSplit = tmp.Split(',');
-                    stars = (float)Convert.ToDouble(tmpSplit[0], System.Globalization.CultureInfo.InvariantCulture);
-                }
-                if ((int)Math.Floor(stars) != playlistStars || found <= 0)
-                {
-                    if (playlistStars != -1)
+                    found = res.IndexOf("\"songHash\":", found);
+                    string id = "";
+                    string diff = "";
+                    if (found > 0)
                     {
-                        playlistContent = playlistContent.Substring(0, playlistContent.Length - 3);
-                        playlistContent += "\r\n    ]\r\n}";
-                        File.WriteAllText("Playlists/ranked_" + playlistStars + "_star.bplist", playlistContent);
-                        //Plugin.Log.Info("saved as ranked_" + playlistStars + "_star.bplist");
+                        resultsFound++;
+                        id = res.Substring(found + 13, 40);
+                        found = res.IndexOf("\"difficultyRaw\":", found);
+                        string tmp = res.Substring(found + 19, 16);
+                        string[] tmpSplit = tmp.Split('_');
+                        diff = tmpSplit[0];
+                        found = res.IndexOf("\"stars\":", found);
+                        tmp = res.Substring(found + 9, 16);
+                        tmpSplit = tmp.Split(',');
+                        stars = (float)Convert.ToDouble(tmpSplit[0], System.Globalization.CultureInfo.InvariantCulture);
                     }
-                    playlistStars = (int)Math.Floor(stars);
-                    playlistContent = "{\r\n    \"playlistTitle\":\"" + playlistStars + "★\",\r\n    \"playlistAuthor\":\"ranked_playlist_generator\",\r\n    \"image\":\"base64," + images[playlistStars] +"\",\r\n    \"songs\":[\r\n";
+                    if ((int)Math.Floor(stars) != playlistStars || resultsFound == 0)
+                    {
+                        if (playlistStars != -1)
+                        {
+                            playlistContent = playlistContent.Substring(0, playlistContent.Length - 3);
+                            playlistContent += "\r\n    ]\r\n}";
+                            File.WriteAllText("Playlists/ranked_" + playlistStars + "_star.bplist", playlistContent);
+                            Plugin.Log.Info("saved as ranked_" + playlistStars + "_star.bplist");
+                        }
+                        playlistStars = (int)Math.Floor(stars);
+                        playlistContent = "{\r\n    \"playlistTitle\":\"" + playlistStars + "★\",\r\n    \"playlistAuthor\":\"ranked_playlist_generator\",\r\n    \"image\":\"base64," + images[playlistStars] + "\",\r\n    \"songs\":[\r\n";
+                    }
+                    if (found > 0)
+                    {
+                        playlistContent += "        {\r\n            \"hash\":\"" + id + "\",\r\n            \"difficulties\":[\r\n                {\r\n                    \"characteristic\":\"Standard\",\r\n                    \"name\":\"" + diff + "\"\r\n                }\r\n            ]\r\n        },\r\n";
+                        Plugin.Log.Info(id + " " + diff + " " + stars);
+                    }
                 }
-                playlistContent += "        {\r\n            \"hash\":\"" + id + "\",\r\n            \"difficulties\":[\r\n                {\r\n                    \"characteristic\":\"Standard\",\r\n                    \"name\":\"" + diff + "\"\r\n                }\r\n            ]\r\n        },\r\n";
-                //Plugin.Log.Info(id + " " + diff + " " + stars);
+                Thread.Sleep(200);
             }
 
             SongCore.Loader.Instance.RefreshSongs(true);
-
+            button.Text = "Generate Ranked Playlists";
         }
 
         
